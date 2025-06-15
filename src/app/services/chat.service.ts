@@ -1,6 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Observable, Subject, BehaviorSubject, interval } from 'rxjs';
-import { take } from 'rxjs/operators';
+import { Observable, Subject, BehaviorSubject } from 'rxjs'; // Removed 'interval', 'take' as no longer needed
 
 export interface Message {
     user: string;
@@ -13,58 +12,93 @@ export interface Message {
 })
 export class ChatService {
     // --- Simulating backend communication with RxJS Subjects ---
+    // These Subjects will now be primarily fed by your WebSocket connection
     private messagesSubject = new Subject<Message>();
     private messageHistorySubject = new Subject<Message[]>();
     private usersInRoomSubject = new BehaviorSubject<string[]>([]);
 
     // In-memory storage for messages and users (will reset on browser refresh)
+    // This will primarily be populated by actual backend data
     private allMessages: Message[] = [];
     private currentUsers = new Set<string>();
 
     constructor() {
-        // Simulate some initial message history (optional)
-        this.allMessages.push({
-            user: 'Admin',
-            text: 'Welcome to the discussion room!',
-            timestamp: new Date().toISOString()
-        });
+        // --- Initial Placeholder Messages (Demo Purposes Only) ---
+        // These messages will appear when the service is first initialized.
+        this.allMessages.push(
+            {
+                user: 'Admin',
+                text: 'Welcome to the discussion room! Waiting for backend connection...',
+                timestamp: new Date().toISOString()
+            },
+            {
+                user: 'System',
+                text: 'This is a demo message. Real-time messages will appear here via WebSockets.',
+                timestamp: new Date().toISOString()
+            }
+        );
 
-        // Simulate other users joining/leaving over time (for dynamic user list)
-        this.simulateUserActivity();
+        // Initialize user list with a default (e.g., 'You' or 'Guest')
+        // This will be updated by your backend 'users in room' events
+        this.currentUsers.add('You');
+        this.usersInRoomSubject.next(Array.from(this.currentUsers));
+
+        // Emit initial history once the service is constructed
+        // Components can subscribe to get these placeholders immediately
+        this.messageHistorySubject.next(this.allMessages);
+
+        // --- WebSocket Integration Point (Future ToDo) ---
+        // This is where you would typically set up your WebSocket connection
+        // and subscribe to incoming messages/events from your backend.
+        // Example (pseudo-code):
+        // this.websocketService.connect().subscribe(event => {
+        //   if (event.type === 'message') {
+        //     const receivedMessage: Message = { user: event.user, text: event.text, timestamp: event.timestamp };
+        //     this.allMessages.push(receivedMessage);
+        //     this.messagesSubject.next(receivedMessage); // Emit to all UI subscribers
+        //   } else if (event.type === 'user_joined' || event.type === 'user_left') {
+        //     // Update this.currentUsers and then call this.usersInRoomSubject.next()
+        //   }
+        // });
     }
 
     // --- Public methods for components to interact with ---
 
+    // For joining a room, you'll likely send a message to your WebSocket backend.
+    // The backend will then respond, updating the user list and message history.
     joinRoom(username: string) {
         if (!this.currentUsers.has(username)) {
-            this.currentUsers.add(username);
-            this.usersInRoomSubject.next(Array.from(this.currentUsers)); // Update user list for all
-            console.log(`[Dummy Backend] ${username} joined.`);
+            this.currentUsers.add(username); // Add locally for immediate UI update
+            this.usersInRoomSubject.next(Array.from(this.currentUsers));
+            console.log(`[Frontend] Attempting to join as ${username}.`);
 
-            // Send message history to the newly joined user
+            // TODO: Send a 'join_room' message to your WebSocket backend here
+            // Your backend will then respond with the full message history and user list
+            // which you'll use to update messageHistorySubject and usersInRoomSubject.
+
+            // For now, just send existing history to the client that just 'joined'
             this.messageHistorySubject.next(this.allMessages);
-
-            // Notify all users about the new join
-            this.messagesSubject.next({
-                user: 'Admin',
-                text: `${username} has joined the chat.`,
-                timestamp: new Date().toISOString()
-            });
         } else {
             // If user already exists, just send history
             this.messageHistorySubject.next(this.allMessages);
         }
     }
 
+    // For sending messages, you'll send them via your WebSocket backend.
+    // The message will then be echoed back from the server to all clients (including sender).
     sendMessage(messageText: string, username: string) {
-        const newMessage: Message = {
+        const tempMessage: Message = { // Create a temporary message
             user: username,
             text: messageText,
             timestamp: new Date().toISOString()
         };
-        this.allMessages.push(newMessage);
-        console.log(`[Dummy Backend] Message from ${username}: ${messageText}`);
-        this.messagesSubject.next(newMessage); // Emit to all subscribers
+        // For a real backend, you'd send this via WebSocket:
+        // this.websocketService.send({ type: 'chat_message', content: messageText, sender: username });
+
+        // For now, just simulate adding it immediately (this won't happen with real backend)
+        this.allMessages.push(tempMessage);
+        this.messagesSubject.next(tempMessage); // Emit to all subscribers
+        console.log(`[Frontend] Sending message from ${username}: ${messageText}`);
     }
 
     getMessages(): Observable<Message> {
@@ -79,65 +113,5 @@ export class ChatService {
         return this.usersInRoomSubject.asObservable();
     }
 
-    // --- Internal simulation logic ---
-    private simulateUserActivity() {
-        const dummyUsers = ['Alice', 'Bob', 'Charlie', 'David'];
-        let userIndex = 0;
-
-        // Simulate users joining every 10-20 seconds
-        interval(Math.random() * 10000 + 10000).subscribe(() => { // Between 10 and 20 seconds
-            if (userIndex < dummyUsers.length) {
-                const dummyUser = dummyUsers[userIndex++];
-                if (!this.currentUsers.has(dummyUser)) { // Ensure user isn't already there
-                    this.currentUsers.add(dummyUser);
-                    this.usersInRoomSubject.next(Array.from(this.currentUsers));
-                    this.messagesSubject.next({
-                        user: 'Admin',
-                        text: `${dummyUser} has joined (simulated).`,
-                        timestamp: new Date().toISOString()
-                    });
-                    console.log(`[Dummy Backend] Simulated: ${dummyUser} joined.`);
-                }
-            }
-        });
-
-        // Simulate users leaving every 15-30 seconds
-        interval(Math.random() * 15000 + 15000).subscribe(() => { // Between 15 and 30 seconds
-            const usersArray = Array.from(this.currentUsers);
-            // Exclude admin messages and the current client user from being simulated leaving
-            const simulatableUsers = usersArray.filter(u => u !== 'Admin' && !u.startsWith('Guest'));
-            if (simulatableUsers.length > 0) {
-                const userToLeave = simulatableUsers[Math.floor(Math.random() * simulatableUsers.length)];
-                this.currentUsers.delete(userToLeave);
-                this.usersInRoomSubject.next(Array.from(this.currentUsers));
-                this.messagesSubject.next({
-                    user: 'Admin',
-                    text: `${userToLeave} has left (simulated).`,
-                    timestamp: new Date().toISOString()
-                });
-                console.log(`[Dummy Backend] Simulated: ${userToLeave} left.`);
-            }
-        });
-
-        // Simulate dummy messages every 5-15 seconds
-        interval(Math.random() * 10000 + 5000).subscribe(() => { // Between 5 and 15 seconds
-            const usersArray = Array.from(this.currentUsers);
-            const activeUsers = usersArray.filter(u => u !== 'Admin'); // Exclude admin from sending messages
-            if (activeUsers.length > 0) {
-                const randomUser = activeUsers[Math.floor(Math.random() * activeUsers.length)];
-                const dummyMessages = [
-                    "Hello everyone!",
-                    "How's it going?",
-                    "Angular is awesome!",
-                    "What are you working on today?",
-                    "Just testing the chat.",
-                    "Good morning!",
-                    "Anyone got questions?",
-                    "Nice to meet you all!"
-                ];
-                const randomMessage = dummyMessages[Math.floor(Math.random() * dummyMessages.length)];
-                this.sendMessage(randomMessage, randomUser);
-            }
-        });
-    }
+    // Removed private simulateUserActivity() method as it's no longer needed.
 }

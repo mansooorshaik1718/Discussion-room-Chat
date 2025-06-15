@@ -1,4 +1,3 @@
-
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewChecked, Input } from '@angular/core';
 import { CommonModule } from '@angular/common'; // <--- Import CommonModule for standalone components
 import { ChatService, Message } from '../../services/chat.service';
@@ -23,12 +22,14 @@ export class ChatWindowComponent implements OnInit, OnDestroy, AfterViewChecked 
 
     ngOnInit(): void {
         this.messageHistorySubscription = this.chatService.getMessageHistory().subscribe(history => {
-            this.messages = history;
+            console.log('Received message history:', history); // Debugging log
+            this.messages = [...history];
             this.scrollToBottom();
         });
 
         this.messageSubscription = this.chatService.getMessages().subscribe(message => {
             this.messages.push(message);
+            this.scrollToBottom();
         });
     }
 
